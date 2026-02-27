@@ -48,6 +48,32 @@ export default function TicTacToe() {
         // Silent error handling
       }
     }
+    
+    // Random who starts first on initial load
+    const aiStartsFirst = Math.random() < 0.5;
+    setIsPlayerTurn(!aiStartsFirst);
+    
+    if (aiStartsFirst) {
+      console.log('🎲 AI starts first!');
+      addDebugLog("AI starts first - making opening move");
+      
+      // AI makes first move after a short delay
+      setTimeout(() => {
+        setIsThinking(true);
+        setTimeout(() => {
+          const emptyBoard = Array(9).fill(null);
+          const aiMove = getBestMove(emptyBoard);
+          const newBoard = [...emptyBoard];
+          newBoard[aiMove] = 'O';
+          setBoard(newBoard);
+          setIsPlayerTurn(true);
+          setIsThinking(false);
+        }, 1000);
+      }, 800);
+    } else {
+      console.log('🎲 Player starts first!');
+      addDebugLog("Player starts first");
+    }
   }, []);
 
   // Save stats to localStorage whenever they change
@@ -778,12 +804,36 @@ export default function TicTacToe() {
 
   const resetGame = () => {
     setBoard(Array(9).fill(null));
-    setIsPlayerTurn(true);
     setGameStatus('playing');
     setDebugLogs([]);
     setMoveAnalysis([]);
     setTestResults([]);
-    addDebugLog("Game reset");
+    
+    // Random who starts first
+    const aiStartsFirst = Math.random() < 0.5;
+    setIsPlayerTurn(!aiStartsFirst);
+    
+    if (aiStartsFirst) {
+      console.log('🎲 AI starts first!');
+      addDebugLog("AI starts first - making opening move");
+      
+      // AI makes first move after a short delay
+      setTimeout(() => {
+        setIsThinking(true);
+        setTimeout(() => {
+          const emptyBoard = Array(9).fill(null);
+          const aiMove = getBestMove(emptyBoard);
+          const newBoard = [...emptyBoard];
+          newBoard[aiMove] = 'O';
+          setBoard(newBoard);
+          setIsPlayerTurn(true);
+          setIsThinking(false);
+        }, 800);
+      }, 500);
+    } else {
+      console.log('🎲 Player starts first!');
+      addDebugLog("Player starts first");
+    }
   };
 
   return (
