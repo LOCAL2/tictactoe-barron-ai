@@ -32,6 +32,7 @@ export default function TicTacToe() {
   const [moveAnalysis, setMoveAnalysis] = useState<MoveAnalysis[]>([]);
   const [isAutoTesting, setIsAutoTesting] = useState(false);
   const [testResults, setTestResults] = useState<string[]>([]);
+  const [lastStarter, setLastStarter] = useState<'player' | 'ai'>('ai'); // Track who started last game
 
   // Load stats from localStorage on mount
   useEffect(() => {
@@ -44,18 +45,20 @@ export default function TicTacToe() {
         setPlayerScore(stats.playerScore || 0);
         setAiScore(stats.aiScore || 0);
         setDraws(stats.draws || 0);
+        setLastStarter(stats.lastStarter || 'ai');
       } catch (error) {
         // Silent error handling
       }
     }
     
-    // Random who starts first on initial load
-    const aiStartsFirst = Math.random() < 0.5;
+    // Alternate who starts first (opposite of last game)
+    const aiStartsFirst = lastStarter === 'player';
     setIsPlayerTurn(!aiStartsFirst);
     
     if (aiStartsFirst) {
-      console.log('🎲 AI starts first!');
+      console.log('🎲 AI starts first! (alternating turns)');
       addDebugLog("AI starts first - making opening move");
+      setLastStarter('ai');
       
       // AI makes first move after a short delay
       setTimeout(() => {
@@ -71,8 +74,9 @@ export default function TicTacToe() {
         }, 1000);
       }, 800);
     } else {
-      console.log('🎲 Player starts first!');
+      console.log('🎲 Player starts first! (alternating turns)');
       addDebugLog("Player starts first");
+      setLastStarter('player');
     }
   }, []);
 
@@ -81,10 +85,11 @@ export default function TicTacToe() {
     const stats = {
       playerScore,
       aiScore,
-      draws
+      draws,
+      lastStarter
     };
     localStorage.setItem('tictactoe-stats', JSON.stringify(stats));
-  }, [playerScore, aiScore, draws]);
+  }, [playerScore, aiScore, draws, lastStarter]);
 
   const addDebugLog = (message: string) => {
     const logMessage = `[${new Date().toLocaleTimeString()}] ${message}`;
@@ -809,13 +814,14 @@ export default function TicTacToe() {
     setMoveAnalysis([]);
     setTestResults([]);
     
-    // Random who starts first
-    const aiStartsFirst = Math.random() < 0.5;
+    // Alternate who starts first (opposite of last game)
+    const aiStartsFirst = lastStarter === 'player';
     setIsPlayerTurn(!aiStartsFirst);
     
     if (aiStartsFirst) {
-      console.log('🎲 AI starts first!');
+      console.log('🎲 AI starts first! (alternating turns)');
       addDebugLog("AI starts first - making opening move");
+      setLastStarter('ai');
       
       // AI makes first move after a short delay
       setTimeout(() => {
@@ -831,8 +837,9 @@ export default function TicTacToe() {
         }, 800);
       }, 500);
     } else {
-      console.log('🎲 Player starts first!');
+      console.log('🎲 Player starts first! (alternating turns)');
       addDebugLog("Player starts first");
+      setLastStarter('player');
     }
   };
 
