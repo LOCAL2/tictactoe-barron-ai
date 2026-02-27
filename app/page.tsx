@@ -63,6 +63,7 @@ export default function TicTacToe() {
   const addDebugLog = (message: string) => {
     const logMessage = `[${new Date().toLocaleTimeString()}] ${message}`;
     setDebugLogs(prev => [...prev.slice(-9), logMessage]);
+    console.log(`🤖 AI DEBUG: ${message}`);
   };
 
   const checkWinner = useCallback((board: Board): Player => {
@@ -164,17 +165,22 @@ export default function TicTacToe() {
 
   // ULTRA PERFECT AI - Enhanced with Advanced Pattern Recognition
   const getBestMove = useCallback((board: Board): number => {
+    console.log(`🚀 === BARRON AI ANALYSIS START ===`);
     addDebugLog("=== BARRON AI ANALYSIS START ===");
     
     const emptyCount = board.filter(cell => cell === null).length;
+    console.log(`📊 Empty positions: ${emptyCount}`);
+    console.log(`📋 Current board:`, board);
     addDebugLog(`Empty positions: ${emptyCount}`);
 
     // STEP 1: Win immediately if possible
+    console.log(`🔍 STEP 1: Checking for immediate win...`);
     for (let i = 0; i < 9; i++) {
       if (board[i] === null) {
         board[i] = 'O';
         if (checkWinner(board) === 'O') {
           board[i] = null;
+          console.log(`👑 STEP 1: IMMEDIATE WIN at position ${i}!`);
           addDebugLog(`STEP 1: IMMEDIATE WIN at position ${i}!`);
           setMoveAnalysis([{
             position: i,
@@ -190,25 +196,50 @@ export default function TicTacToe() {
       }
     }
 
-    // STEP 2: Block opponent's immediate win
+    // STEP 2: Block opponent's immediate win (including preventing forks)
+    console.log(`🔍 STEP 2: Checking for opponent's winning threats...`);
+    const blockingMoves = [];
     for (let i = 0; i < 9; i++) {
       if (board[i] === null) {
         board[i] = 'X';
         if (checkWinner(board) === 'X') {
-          board[i] = null;
-          addDebugLog(`STEP 2: MUST BLOCK at position ${i}!`);
-          setMoveAnalysis([{
-            position: i,
-            score: 50000,
-            reasoning: "STEP 2: BLOCK OPPONENT WIN",
-            winningMove: false,
-            blockingMove: true,
-            strategicValue: 50
-          }]);
-          return i;
+          blockingMoves.push(i);
+          console.log(`⚠️ Found threat at position ${i}`);
         }
         board[i] = null;
       }
+    }
+    
+    if (blockingMoves.length > 1) {
+      // Player has created a fork! This is critical - we already lost
+      console.log(`🔴 CRITICAL: Player has ${blockingMoves.length} winning threats (FORK)! Game likely lost.`);
+      console.log(`🔴 Available blocks: ${blockingMoves.join(', ')}`);
+      // Block one of them anyway
+      const blockPosition = blockingMoves[0];
+      console.log(`🛡️ STEP 2: Blocking position ${blockPosition} (but player will win next turn)`);
+      addDebugLog(`STEP 2: MUST BLOCK at position ${blockPosition}!`);
+      setMoveAnalysis([{
+        position: blockPosition,
+        score: 50000,
+        reasoning: "STEP 2: BLOCK OPPONENT WIN (FORK DETECTED)",
+        winningMove: false,
+        blockingMove: true,
+        strategicValue: 50
+      }]);
+      return blockPosition;
+    } else if (blockingMoves.length === 1) {
+      const blockPosition = blockingMoves[0];
+      console.log(`🛡️ STEP 2: MUST BLOCK at position ${blockPosition}!`);
+      addDebugLog(`STEP 2: MUST BLOCK at position ${blockPosition}!`);
+      setMoveAnalysis([{
+        position: blockPosition,
+        score: 50000,
+        reasoning: "STEP 2: BLOCK OPPONENT WIN",
+        winningMove: false,
+        blockingMove: true,
+        strategicValue: 50
+      }]);
+      return blockPosition;
     }
 
     // STEP 3: Create a fork (two winning threats) - Enhanced with priority scoring
@@ -264,54 +295,101 @@ export default function TicTacToe() {
       return bestForkMove;
     }
 
-    // STEP 4: Block opponent's fork - Enhanced with threat assessment
-    let criticalBlockMove = -1;
-    let maxThreatLevel = 0;
+    // STEP 4: Block opponent's fork - Prevent player from creating fork opportunities
+    console.log(`🔍 STEP 4: Checking which moves would allow opponent to create forks...`);
     
-    for (let i = 0; i < 9; i++) {
-      if (board[i] === null) {
-        board[i] = 'X';
-        
-        let opponentWinningLines = 0;
-        let threatLevel = 0;
-        
-        for (const combo of WINNING_COMBINATIONS) {
-          const [a, b, c] = combo;
-          const xCount = [board[a], board[b], board[c]].filter(cell => cell === 'X').length;
-          const emptyCount = [board[a], board[b], board[c]].filter(cell => cell === null).length;
-          const oCount = [board[a], board[b], board[c]].filter(cell => cell === 'O').length;
-          
-          if (xCount === 2 && emptyCount === 1 && oCount === 0) {
-            opponentWinningLines++;
-            // Higher threat for corner-based forks
-            if ([0, 2, 6, 8].some(corner => [a, b, c].includes(corner))) {
-              threatLevel += 3;
-            } else {
-              threatLevel += 2;
-            }
-          }
+    // Special case: If player has opposite corners, we MUST play a side (not corner)
+    const playerCorners = [];
+    for (let i of [0, 2, 6, 8]) {
+      if (board[i] === 'X') playerCorners.push(i);
+    }
+    
+    if (playerCorners.length === 2) {
+      const [c1, c2] = playerCorners;
+      // Check if they are opposite corners
+      if ((c1 === 0 && c2 === 8) || (c1 === 8 && c2 === 0) || 
+          (c1 === 2 && c2 === 6) || (c1 === 6 && c2 === 2)) {
+        console.log(`🚨 CRITICAL: Player has opposite corners (${c1}, ${c2})! Must play a side!`);
+        const sides = [1, 3, 5, 7].filter(pos => board[pos] === null);
+        if (sides.length > 0) {
+          const sideMove = sides[0];
+          console.log(`🛡️ STEP 4: Playing side position ${sideMove} to prevent fork`);
+          addDebugLog(`STEP 4: PREVENT OPPOSITE CORNER FORK at position ${sideMove}!`);
+          setMoveAnalysis([{
+            position: sideMove,
+            score: 45000,
+            reasoning: `STEP 4: PREVENT OPPOSITE CORNER FORK`,
+            winningMove: false,
+            blockingMove: true,
+            strategicValue: 45
+          }]);
+          return sideMove;
         }
-        
-        if (opponentWinningLines >= 2 && threatLevel > maxThreatLevel) {
-          maxThreatLevel = threatLevel;
-          criticalBlockMove = i;
-        }
-        
-        board[i] = null;
       }
     }
     
-    if (criticalBlockMove !== -1) {
-      addDebugLog(`STEP 4: BLOCK CRITICAL FORK at position ${criticalBlockMove} (threat: ${maxThreatLevel})!`);
+    // For each possible AI move, check if it allows player to create a fork
+    const safeMoves = [];
+    const dangerousMoves = [];
+    
+    for (let aiMove = 0; aiMove < 9; aiMove++) {
+      if (board[aiMove] !== null) continue;
+      
+      // Simulate AI move
+      board[aiMove] = 'O';
+      
+      // Check all possible player responses
+      let maxPlayerThreats = 0;
+      for (let playerMove = 0; playerMove < 9; playerMove++) {
+        if (board[playerMove] !== null) continue;
+        
+        // Simulate player move
+        board[playerMove] = 'X';
+        
+        // Count how many winning threats player would have
+        let playerThreats = 0;
+        for (let checkPos = 0; checkPos < 9; checkPos++) {
+          if (board[checkPos] !== null) continue;
+          
+          board[checkPos] = 'X';
+          if (checkWinner(board) === 'X') {
+            playerThreats++;
+          }
+          board[checkPos] = null;
+        }
+        
+        maxPlayerThreats = Math.max(maxPlayerThreats, playerThreats);
+        board[playerMove] = null;
+      }
+      
+      board[aiMove] = null;
+      
+      if (maxPlayerThreats >= 2) {
+        dangerousMoves.push({ position: aiMove, threats: maxPlayerThreats });
+        console.log(`⚠️ Position ${aiMove} allows player to create ${maxPlayerThreats} threats (DANGEROUS)`);
+      } else {
+        safeMoves.push(aiMove);
+      }
+    }
+    
+    // If we found dangerous moves, avoid them and pick a safe one
+    if (dangerousMoves.length > 0 && safeMoves.length > 0) {
+      console.log(`🛡️ STEP 4: Avoiding dangerous moves, choosing from safe positions: ${safeMoves.join(', ')}`);
+      // Prefer corners, then center, then sides
+      const preferredSafe = safeMoves.find(pos => [0, 2, 6, 8].includes(pos)) || 
+                           safeMoves.find(pos => pos === 4) ||
+                           safeMoves[0];
+      console.log(`🛡️ STEP 4: Selected safe position ${preferredSafe}`);
+      addDebugLog(`STEP 4: PREVENT FORK at position ${preferredSafe}!`);
       setMoveAnalysis([{
-        position: criticalBlockMove,
-        score: 30000 + maxThreatLevel * 1000,
-        reasoning: `STEP 4: BLOCK CRITICAL FORK - Threat Level: ${maxThreatLevel}`,
+        position: preferredSafe,
+        score: 35000,
+        reasoning: `STEP 4: PREVENT OPPONENT FORK`,
         winningMove: false,
         blockingMove: true,
-        strategicValue: 30 + maxThreatLevel
+        strategicValue: 35
       }]);
-      return criticalBlockMove;
+      return preferredSafe;
     }
 
     // STEP 5: Advanced Center Strategy
@@ -503,6 +581,8 @@ export default function TicTacToe() {
     const newBoard = [...board];
     newBoard[index] = 'X';
     
+    console.log(`🎮 PLAYER MOVE: Position ${index}`);
+    console.log(`📋 Board after player move:`, newBoard);
     addDebugLog(`Player moved to position ${index}`);
     
     const winner = checkWinner(newBoard);
@@ -510,6 +590,8 @@ export default function TicTacToe() {
       setBoard(newBoard);
       setGameStatus('player-win');
       setPlayerScore(prev => prev + 1);
+      console.log(`🎉 PLAYER WON! This should not happen!`);
+      console.log(`🔴 CRITICAL: AI failed to prevent player win!`);
       addDebugLog("PLAYER WON - This should not happen!");
       return;
     }
@@ -527,9 +609,13 @@ export default function TicTacToe() {
     setIsThinking(true);
 
     setTimeout(() => {
+      console.log(`🤖 AI TURN STARTING...`);
       const aiMove = getBestMove(newBoard);
       const aiBoard = [...newBoard];
       aiBoard[aiMove] = 'O';
+
+      console.log(`🤖 AI SELECTED: Position ${aiMove}`);
+      console.log(`📋 Board after AI move:`, aiBoard);
 
       const aiWinner = checkWinner(aiBoard);
       if (aiWinner) {
