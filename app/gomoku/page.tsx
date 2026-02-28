@@ -131,33 +131,80 @@ export default function ThaiMakhos() {
     return moves;
   }, [getCaptureMoves]);
 
-  const evaluateBoard = useCallback((board: Board): number => {
+  const evaluateBoard = useCallback((board: Board, logDetails: boolean = false): number => {
     let score = 0;
+    let whitePieces = 0;
+    let blackPieces = 0;
+    let whiteKings = 0;
+    let blackKings = 0;
+    let whitePositionScore = 0;
+    let blackPositionScore = 0;
     
     for (let i = 0; i < 64; i++) {
       const piece = board[i];
       if (!piece) continue;
       
-      const [row] = getPosition(i);
+      const [row, col] = getPosition(i);
       const isWhite = piece[0] === 'W';
       const isKing = piece[1] === 'K';
       
-      let value = isKing ? 300 : 100;
-      value += (7 - Math.abs(3.5 - row)) * 10;
+      if (isWhite) {
+        whitePieces++;
+        if (isKing) whiteKings++;
+      } else {
+        blackPieces++;
+        if (isKing) blackKings++;
+      }
       
+      // Base value
+      let value = isKing ? 300 : 100;
+      
+      // Center control bonus
+      const centerDistance = Math.abs(3.5 - row) + Math.abs(3.5 - col);
+      value += (14 - centerDistance) * 5;
+      
+      // Advancement bonus for pawns
       if (!isKing) {
         if (isWhite && row > 5) value += 50;
         if (!isWhite && row < 2) value += 50;
       }
       
+      // Edge penalty
+      if (col === 0 || col === 7) value -= 10;
+      
+      // Mobility bonus
+      const moves = getValidMoves(board, i, false);
+      value += moves.length * 5;
+      
+      if (isWhite) {
+        whitePositionScore += value;
+      } else {
+        blackPositionScore += value;
+      }
+      
       score += isWhite ? value : -value;
     }
     
+    // Material advantage
+    const materialDiff = (whitePieces - blackPieces) * 100;
+    const kingDiff = (whiteKings - blackKings) * 200;
+    score += materialDiff + kingDiff;
+    
+    if (logDetails) {
+      console.log('📊 Board Evaluation:', {
+        totalScore: score,
+        white: { pieces: whitePieces, kings: whiteKings, positionScore: whitePositionScore },
+        black: { pieces: blackPieces, kings: blackKings, positionScore: blackPositionScore },
+        materialDiff,
+        kingDiff
+      });
+    }
+    
     return score;
-  }, []);
+  }, [getValidMoves]);
 
   const minimax = useCallback((board: Board, depth: number, alpha: number, beta: number, isMaximizing: boolean): number => {
-    if (depth === 0) return evaluateBoard(board);
+    if (depth === 0) return evaluateBoard(board, false);
     
     const pieces = board.map((p, i) => ({ piece: p, index: i }))
       .filter(({ piece }) => piece && (isMaximizing ? piece[0] === 'W' : piece[0] === 'B'));
@@ -257,25 +304,37 @@ export default function ThaiMakhos() {
   };
 
   const makeMove = (from: number, to: number) => {
-    const newBoard = [...board];
-    newBoard[to] = newBoard[from];
-    newBoard[from] = null;
-
     const [fromRow, fromCol] = getPosition(from);
     const [toRow, toCol] = getPosition(to);
     
+    console.log(`\n👤 ========== PLAYER MOVE ==========`);
+    console.log(`📍 From: [${fromRow},${fromCol}] → To: [${toRow},${toCol}]`);
+    
+    const newBoard = [...board];
+    newBoard[to] = newBoard[from];
+    newBoard[from] = null;
+    
     const wasCapture = Math.abs(toRow - fromRow) === 2;
     if (wasCapture) {
-      newBoard[getIndex((fromRow + toRow) / 2, (fromCol + toCol) / 2)] = null;
+      const capturedIndex = getIndex((fromRow + toRow) / 2, (fromCol + toCol) / 2);
+      const capturedPiece = newBoard[capturedIndex];
+      console.log(`🎯 CAPTURED: ${capturedPiece} at [${Math.floor(capturedIndex / 8)},${capturedIndex % 8}]`);
+      newBoard[capturedIndex] = null;
     }
 
-    if (newBoard[to] === 'BP' && toRow === 0) newBoard[to] = 'BK';
-    else if (newBoard[to] === 'WP' && toRow === 7) newBoard[to] = 'WK';
+    if (newBoard[to] === 'BP' && toRow === 0) {
+      newBoard[to] = 'BK';
+      console.log('👑 PROMOTION to King!');
+    } else if (newBoard[to] === 'WP' && toRow === 7) {
+      newBoard[to] = 'WK';
+      console.log('👑 PROMOTION to King!');
+    }
 
     // Check for multi-jump
     if (wasCapture) {
       const additionalCaptures = getCaptureMoves(newBoard, to);
       if (additionalCaptures.length > 0) {
+        console.log(`🔄 Multi-jump available! ${additionalCaptures.length} more captures possible`);
         setBoard(newBoard);
         setSelectedPiece(to);
         setValidMoves(additionalCaptures);
@@ -290,13 +349,17 @@ export default function ThaiMakhos() {
     const blackPieces = newBoard.filter(p => p && p[0] === 'B').length;
     const whitePieces = newBoard.filter(p => p && p[0] === 'W').length;
 
+    console.log(`📊 After player move: White=${whitePieces} pieces, Black=${blackPieces} pieces`);
+
     if (whitePieces === 0) {
+      console.log('🎉 PLAYER WINS!');
       setGameStatus('player-win');
       setPlayerScore(prev => prev + 1);
       return;
     }
 
     if (blackPieces === 0) {
+      console.log('😢 PLAYER LOSES!');
       setGameStatus('ai-win');
       setAiScore(prev => prev + 1);
       return;
@@ -312,12 +375,18 @@ export default function ThaiMakhos() {
       }
     }
 
+    console.log('👤 ========== PLAYER MOVE END ==========\n');
+    
     setIsPlayerTurn(false);
     setIsThinking(true);
     setTimeout(() => aiMove(newBoard), 800);
   };
 
   const aiMove = (currentBoard: Board) => {
+    console.log('🤖 ========== AI TURN START ==========');
+    console.log('📋 Current Board State:');
+    evaluateBoard(currentBoard, true);
+    
     // Check for forced captures
     const aiPiecesWithCaptures: number[] = [];
     for (let i = 0; i < 64; i++) {
@@ -328,33 +397,62 @@ export default function ThaiMakhos() {
       }
     }
     
+    if (aiPiecesWithCaptures.length > 0) {
+      console.log('⚠️ FORCED CAPTURES available from positions:', aiPiecesWithCaptures.map(i => {
+        const [r, c] = getPosition(i);
+        return `[${r},${c}]`;
+      }));
+    }
+    
     let bestMove: { from: number; to: number } | null = null;
     let bestScore = -Infinity;
+    const moveEvaluations: any[] = [];
     
     const aiPieces = aiPiecesWithCaptures.length > 0 
       ? aiPiecesWithCaptures.map(i => ({ piece: currentBoard[i], index: i }))
       : currentBoard.map((p, i) => ({ piece: p, index: i })).filter(({ piece }) => piece && piece[0] === 'W');
     
+    console.log(`🔍 Analyzing ${aiPieces.length} AI pieces...`);
+    
     for (const { index } of aiPieces) {
       const moves = getValidMoves(currentBoard, index, aiPiecesWithCaptures.length > 0);
+      const [fromRow, fromCol] = getPosition(index);
+      
+      console.log(`\n📍 Piece at [${fromRow},${fromCol}] (${currentBoard[index]}) - ${moves.length} possible moves`);
       
       for (const move of moves) {
         const newBoard = [...currentBoard];
         newBoard[move] = newBoard[index];
         newBoard[index] = null;
         
-        const [fromRow, fromCol] = getPosition(index);
         const [toRow, toCol] = getPosition(move);
         const isCapture = Math.abs(toRow - fromRow) === 2;
         
+        let capturedPiece = null;
         if (isCapture) {
-          newBoard[getIndex((fromRow + toRow) / 2, (fromCol + toCol) / 2)] = null;
+          const midIndex = getIndex((fromRow + toRow) / 2, (fromCol + toCol) / 2);
+          capturedPiece = newBoard[midIndex];
+          newBoard[midIndex] = null;
         }
         
         if (newBoard[move] === 'WP' && toRow === 7) newBoard[move] = 'WK';
         
         const score = minimax(newBoard, 5, -Infinity, Infinity, false);
         const finalScore = isCapture ? score + 1000 : score;
+        
+        const moveInfo = {
+          from: `[${fromRow},${fromCol}]`,
+          to: `[${toRow},${toCol}]`,
+          isCapture,
+          capturedPiece,
+          rawScore: score,
+          finalScore,
+          promotion: newBoard[move] === 'WK' && currentBoard[index] === 'WP'
+        };
+        
+        moveEvaluations.push(moveInfo);
+        
+        console.log(`  → Move to [${toRow},${toCol}]: ${isCapture ? '🎯 CAPTURE' : '📦 Normal'} | Score: ${finalScore} ${moveInfo.promotion ? '👑 PROMOTION' : ''}`);
         
         if (finalScore > bestScore) {
           bestScore = finalScore;
@@ -363,7 +461,18 @@ export default function ThaiMakhos() {
       }
     }
     
+    console.log('\n🏆 BEST MOVE SELECTED:');
+    if (bestMove) {
+      const [fromRow, fromCol] = getPosition(bestMove.from);
+      const [toRow, toCol] = getPosition(bestMove.to);
+      const isCapture = Math.abs(toRow - fromRow) === 2;
+      console.log(`  From: [${fromRow},${fromCol}] → To: [${toRow},${toCol}]`);
+      console.log(`  Type: ${isCapture ? '🎯 CAPTURE' : '📦 Normal Move'}`);
+      console.log(`  Score: ${bestScore}`);
+    }
+    
     if (!bestMove) {
+      console.log('❌ No valid moves available - AI cannot move');
       setIsPlayerTurn(true);
       setIsThinking(false);
       return;
@@ -387,6 +496,7 @@ export default function ThaiMakhos() {
     if (wasCapture) {
       const additionalCaptures = getCaptureMoves(newBoard, bestMove.to);
       if (additionalCaptures.length > 0) {
+        console.log('🔄 Multi-jump available! Continuing capture sequence...');
         setBoard(newBoard);
         setTimeout(() => aiMove(newBoard), 600);
         return;
@@ -398,10 +508,14 @@ export default function ThaiMakhos() {
     const blackPieces = newBoard.filter(p => p && p[0] === 'B').length;
     const whitePieces = newBoard.filter(p => p && p[0] === 'W').length;
     
+    console.log(`\n📊 After AI move: White=${whitePieces} pieces, Black=${blackPieces} pieces`);
+    
     if (blackPieces === 0) {
+      console.log('🎉 AI WINS!');
       setGameStatus('ai-win');
       setAiScore(prev => prev + 1);
     } else if (whitePieces === 0) {
+      console.log('😢 AI LOSES!');
       setGameStatus('player-win');
       setPlayerScore(prev => prev + 1);
     }
@@ -415,8 +529,17 @@ export default function ThaiMakhos() {
         }
       }
     }
+    
+    if (playerPiecesWithCaptures.length > 0) {
+      console.log('⚠️ Player has FORCED CAPTURES at:', playerPiecesWithCaptures.map(i => {
+        const [r, c] = getPosition(i);
+        return `[${r},${c}]`;
+      }));
+    }
+    
     setMustCaptureFrom(playerPiecesWithCaptures);
     
+    console.log('🤖 ========== AI TURN END ==========\n');
     setIsPlayerTurn(true);
     setIsThinking(false);
   };
