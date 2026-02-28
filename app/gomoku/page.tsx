@@ -115,6 +115,37 @@ export default function ThaiMakhos() {
         }
       }
       setMustCaptureFrom(playerPiecesWithCaptures);
+      
+      // Check if player has no moves (lose condition)
+      if (playerPiecesWithCaptures.length === 0) {
+        let hasAnyMoves = false;
+        for (let i = 0; i < 64; i++) {
+          if (board[i] && board[i]![0] === 'B') {
+            const moves = [];
+            const [row, col] = getPosition(i);
+            const isKing = board[i]![1] === 'K';
+            const directions = isKing ? [[-1, -1], [-1, 1], [1, -1], [1, 1]] : [[-1, -1], [-1, 1]];
+            
+            for (const [dr, dc] of directions) {
+              const newRow = row + dr;
+              const newCol = col + dc;
+              const newIndex = getIndex(newRow, newCol);
+              if (newIndex !== -1 && isValidSquare(newRow, newCol) && !board[newIndex]) {
+                hasAnyMoves = true;
+                break;
+              }
+            }
+            if (hasAnyMoves) break;
+          }
+        }
+        
+        if (!hasAnyMoves) {
+          console.log('😢 Player has no valid moves - AI WINS!');
+          setGameStatus('ai-win');
+          setAiScore(prev => prev + 1);
+          setLastStarter('ai');
+        }
+      }
     }
   }, [board, gameStatus, isPlayerTurn, isThinking, getCaptureMoves]);
 
@@ -638,6 +669,30 @@ export default function ThaiMakhos() {
     
     setMustCaptureFrom(playerPiecesWithCaptures);
     
+    // Check if player has no moves at all (lose condition)
+    if (playerPiecesWithCaptures.length === 0) {
+      let hasAnyMoves = false;
+      for (let i = 0; i < 64; i++) {
+        if (newBoard[i] && newBoard[i]![0] === 'B') {
+          if (getValidMoves(newBoard, i, false).length > 0) {
+            hasAnyMoves = true;
+            break;
+          }
+        }
+      }
+      
+      if (!hasAnyMoves) {
+        console.log('😢 Player has no valid moves - AI WINS!');
+        setGameStatus('ai-win');
+        setAiScore(prev => prev + 1);
+        setLastStarter('ai');
+        setIsPlayerTurn(true);
+        setIsThinking(false);
+        console.log('🤖 ========== AI TURN END ==========\n');
+        return;
+      }
+    }
+    
     console.log('🤖 ========== AI TURN END ==========\n');
     setIsPlayerTurn(true);
     setIsThinking(false);
@@ -836,7 +891,7 @@ export default function ThaiMakhos() {
 
             <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 border border-blue-200 dark:border-blue-800">
               <p className="text-sm text-blue-900 dark:text-blue-100">
-                <strong>วิธีเล่น:</strong><br/>
+                <strong>วิธีเล่น</strong><br/>
                 • คลิกเลือกหมากของคุณ (ดำ)<br/>
                 • คลิกช่องสีเขียวเพื่อเดิน<br/>
                 • กินหมากฝ่ายตรงข้ามให้หมดเพื่อชนะ<br/>
