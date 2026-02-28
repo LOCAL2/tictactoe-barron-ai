@@ -139,6 +139,41 @@ export default function ThaiMakhos() {
     let blackKings = 0;
     let whitePositionScore = 0;
     let blackPositionScore = 0;
+    let whiteThreatened = 0;
+    let blackThreatened = 0;
+    
+    // Check for threatened pieces
+    const threatenedPieces = new Set<number>();
+    for (let i = 0; i < 64; i++) {
+      const piece = board[i];
+      if (!piece) continue;
+      
+      const [row, col] = getPosition(i);
+      const isWhite = piece[0] === 'W';
+      
+      // Check if this piece can be captured
+      const directions = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+      for (const [dr, dc] of directions) {
+        const attackerRow = row - dr;
+        const attackerCol = col - dc;
+        const attackerIndex = getIndex(attackerRow, attackerCol);
+        
+        if (attackerIndex !== -1) {
+          const attacker = board[attackerIndex];
+          if (attacker && attacker[0] !== piece[0]) {
+            const landingRow = row + dr;
+            const landingCol = col + dc;
+            const landingIndex = getIndex(landingRow, landingCol);
+            
+            if (landingIndex !== -1 && isValidSquare(landingRow, landingCol) && !board[landingIndex]) {
+              threatenedPieces.add(i);
+              if (isWhite) whiteThreatened++;
+              else blackThreatened++;
+            }
+          }
+        }
+      }
+    }
     
     for (let i = 0; i < 64; i++) {
       const piece = board[i];
@@ -157,24 +192,50 @@ export default function ThaiMakhos() {
       }
       
       // Base value
-      let value = isKing ? 300 : 100;
+      let value = isKing ? 350 : 100;
       
-      // Center control bonus
+      // Center control bonus (stronger)
       const centerDistance = Math.abs(3.5 - row) + Math.abs(3.5 - col);
-      value += (14 - centerDistance) * 5;
+      value += (14 - centerDistance) * 8;
       
-      // Advancement bonus for pawns
+      // Advancement bonus for pawns (stronger)
       if (!isKing) {
-        if (isWhite && row > 5) value += 50;
-        if (!isWhite && row < 2) value += 50;
+        if (isWhite && row >= 5) value += (row - 4) * 30;
+        if (!isWhite && row <= 2) value += (3 - row) * 30;
       }
       
-      // Edge penalty
-      if (col === 0 || col === 7) value -= 10;
+      // Edge penalty (stronger)
+      if (col === 0 || col === 7) value -= 20;
+      if (row === 0 || row === 7) value -= 10;
+      
+      // Back row protection bonus
+      if (!isKing) {
+        if (isWhite && row <= 1) value += 15;
+        if (!isWhite && row >= 6) value += 15;
+      }
       
       // Mobility bonus
       const moves = getValidMoves(board, i, false);
-      value += moves.length * 5;
+      value += moves.length * 8;
+      
+      // Threatened piece penalty
+      if (threatenedPieces.has(i)) {
+        value -= isKing ? 100 : 50;
+      }
+      
+      // Protected piece bonus
+      let isProtected = false;
+      for (const [dr, dc] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) {
+        const protectorIndex = getIndex(row + dr, col + dc);
+        if (protectorIndex !== -1) {
+          const protector = board[protectorIndex];
+          if (protector && protector[0] === piece[0]) {
+            isProtected = true;
+            break;
+          }
+        }
+      }
+      if (isProtected) value += 10;
       
       if (isWhite) {
         whitePositionScore += value;
@@ -185,18 +246,38 @@ export default function ThaiMakhos() {
       score += isWhite ? value : -value;
     }
     
-    // Material advantage
-    const materialDiff = (whitePieces - blackPieces) * 100;
-    const kingDiff = (whiteKings - blackKings) * 200;
-    score += materialDiff + kingDiff;
+    // Material advantage (stronger weight)
+    const materialDiff = (whitePieces - blackPieces) * 150;
+    const kingDiff = (whiteKings - blackKings) * 250;
+    
+    // Threat penalty
+    const threatDiff = (blackThreatened - whiteThreatened) * 30;
+    
+    score += materialDiff + kingDiff + threatDiff;
+    
+    // Endgame bonus: push for king promotion
+    if (whitePieces + blackPieces <= 6) {
+      for (let i = 0; i < 64; i++) {
+        const piece = board[i];
+        if (!piece || piece[1] === 'K') continue;
+        
+        const [row] = getPosition(i);
+        if (piece[0] === 'W' && row >= 5) {
+          score += (row - 4) * 20;
+        } else if (piece[0] === 'B' && row <= 2) {
+          score -= (3 - row) * 20;
+        }
+      }
+    }
     
     if (logDetails) {
       console.log('📊 Board Evaluation:', {
         totalScore: score,
-        white: { pieces: whitePieces, kings: whiteKings, positionScore: whitePositionScore },
-        black: { pieces: blackPieces, kings: blackKings, positionScore: blackPositionScore },
+        white: { pieces: whitePieces, kings: whiteKings, positionScore: whitePositionScore, threatened: whiteThreatened },
+        black: { pieces: blackPieces, kings: blackKings, positionScore: blackPositionScore, threatened: blackThreatened },
         materialDiff,
-        kingDiff
+        kingDiff,
+        threatDiff
       });
     }
     
@@ -437,7 +518,7 @@ export default function ThaiMakhos() {
         
         if (newBoard[move] === 'WP' && toRow === 7) newBoard[move] = 'WK';
         
-        const score = minimax(newBoard, 5, -Infinity, Infinity, false);
+        const score = minimax(newBoard, 7, -Infinity, Infinity, false);
         const finalScore = isCapture ? score + 1000 : score;
         
         const moveInfo = {
@@ -696,7 +777,8 @@ export default function ThaiMakhos() {
                 • เบี้ยถึงแถวสุดท้ายจะกลายเป็นฮอส (♔)<br/>
                 • <strong>บังคับกิน:</strong> ถ้ากินได้ต้องกิน (ช่องสีเหลืองกระพริบ)<br/>
                 • สามารถกินต่อเนื่องหลายตัวได้<br/>
-                • AI ใช้ Minimax depth 5 + Alpha-Beta Pruning
+                • AI ใช้ Minimax depth 7 + Alpha-Beta Pruning<br/>
+                • ระบบประเมินขั้นสูง: ตำแหน่ง, การคุกคาม, การป้องกัน
               </p>
             </div>
           </div>
