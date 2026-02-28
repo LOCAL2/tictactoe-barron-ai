@@ -16,6 +16,7 @@ export default function ThaiMakhos() {
   const [aiScore, setAiScore] = useState(0);
   const [isThinking, setIsThinking] = useState(false);
   const [mustCaptureFrom, setMustCaptureFrom] = useState<number[]>([]);
+  const [lastStarter, setLastStarter] = useState<'player' | 'ai'>('ai');
 
   function initializeBoard(): Board {
     const board: Board = Array(64).fill(null);
@@ -75,9 +76,21 @@ export default function ThaiMakhos() {
         const stats = JSON.parse(savedStats);
         setPlayerScore(stats.playerScore || 0);
         setAiScore(stats.aiScore || 0);
+        setLastStarter(stats.lastStarter || 'ai');
       } catch (error) {
         console.error('Failed to load stats');
       }
+    }
+    
+    // Determine who starts based on lastStarter
+    const nextStarter = lastStarter === 'player' ? 'ai' : 'player';
+    if (nextStarter === 'ai') {
+      console.log('🤖 AI starts first this game');
+      setIsPlayerTurn(false);
+      setIsThinking(true);
+      setTimeout(() => aiMove(initializeBoard()), 1000);
+    } else {
+      console.log('👤 Player starts first this game');
     }
   }, []);
 
@@ -85,9 +98,10 @@ export default function ThaiMakhos() {
   useEffect(() => {
     localStorage.setItem('makhos-stats', JSON.stringify({
       playerScore,
-      aiScore
+      aiScore,
+      lastStarter
     }));
-  }, [playerScore, aiScore]);
+  }, [playerScore, aiScore, lastStarter]);
 
   // Check for forced captures when board changes
   useEffect(() => {
@@ -436,6 +450,7 @@ export default function ThaiMakhos() {
       console.log('🎉 PLAYER WINS!');
       setGameStatus('player-win');
       setPlayerScore(prev => prev + 1);
+      setLastStarter(isPlayerTurn ? 'player' : 'ai');
       return;
     }
 
@@ -443,6 +458,7 @@ export default function ThaiMakhos() {
       console.log('😢 PLAYER LOSES!');
       setGameStatus('ai-win');
       setAiScore(prev => prev + 1);
+      setLastStarter(isPlayerTurn ? 'player' : 'ai');
       return;
     }
 
@@ -595,10 +611,12 @@ export default function ThaiMakhos() {
       console.log('🎉 AI WINS!');
       setGameStatus('ai-win');
       setAiScore(prev => prev + 1);
+      setLastStarter('ai');
     } else if (whitePieces === 0) {
       console.log('😢 AI LOSES!');
       setGameStatus('player-win');
       setPlayerScore(prev => prev + 1);
+      setLastStarter('player');
     }
     
     // Check for forced captures for player
@@ -626,13 +644,27 @@ export default function ThaiMakhos() {
   };
 
   const resetGame = () => {
-    setBoard(initializeBoard());
-    setIsPlayerTurn(true);
+    const newBoard = initializeBoard();
+    setBoard(newBoard);
     setGameStatus('playing');
     setSelectedPiece(null);
     setValidMoves([]);
     setIsThinking(false);
     setMustCaptureFrom([]);
+    
+    // Alternate starter
+    const nextStarter = lastStarter === 'player' ? 'ai' : 'player';
+    setLastStarter(nextStarter);
+    
+    if (nextStarter === 'ai') {
+      console.log('🤖 AI starts first this game');
+      setIsPlayerTurn(false);
+      setIsThinking(true);
+      setTimeout(() => aiMove(newBoard), 1000);
+    } else {
+      console.log('👤 Player starts first this game');
+      setIsPlayerTurn(true);
+    }
   };
 
   const resetStats = () => {
