@@ -143,7 +143,7 @@ export default function ThaiMakhos() {
           console.log('😢 Player has no valid moves - AI WINS!');
           setGameStatus('ai-win');
           setAiScore(prev => prev + 1);
-          setLastStarter('ai');
+          // Don't update lastStarter here - it will be updated in resetGame
         }
       }
     }
@@ -481,7 +481,7 @@ export default function ThaiMakhos() {
       console.log('🎉 PLAYER WINS!');
       setGameStatus('player-win');
       setPlayerScore(prev => prev + 1);
-      setLastStarter(isPlayerTurn ? 'player' : 'ai');
+      // Don't update lastStarter here - it will be updated in resetGame
       return;
     }
 
@@ -489,7 +489,7 @@ export default function ThaiMakhos() {
       console.log('😢 PLAYER LOSES!');
       setGameStatus('ai-win');
       setAiScore(prev => prev + 1);
-      setLastStarter(isPlayerTurn ? 'player' : 'ai');
+      // Don't update lastStarter here - it will be updated in resetGame
       return;
     }
 
@@ -642,12 +642,12 @@ export default function ThaiMakhos() {
       console.log('🎉 AI WINS!');
       setGameStatus('ai-win');
       setAiScore(prev => prev + 1);
-      setLastStarter('ai');
+      // Don't update lastStarter here - it will be updated in resetGame
     } else if (whitePieces === 0) {
       console.log('😢 AI LOSES!');
       setGameStatus('player-win');
       setPlayerScore(prev => prev + 1);
-      setLastStarter('player');
+      // Don't update lastStarter here - it will be updated in resetGame
     }
     
     // Check for forced captures for player
@@ -685,7 +685,7 @@ export default function ThaiMakhos() {
         console.log('😢 Player has no valid moves - AI WINS!');
         setGameStatus('ai-win');
         setAiScore(prev => prev + 1);
-        setLastStarter('ai');
+        // Don't update lastStarter here - it will be updated in resetGame
         setIsPlayerTurn(true);
         setIsThinking(false);
         console.log('🤖 ========== AI TURN END ==========\n');
@@ -707,7 +707,7 @@ export default function ThaiMakhos() {
     setIsThinking(false);
     setMustCaptureFrom([]);
     
-    // Alternate starter
+    // Alternate starter based on current lastStarter
     const nextStarter = lastStarter === 'player' ? 'ai' : 'player';
     setLastStarter(nextStarter);
     
