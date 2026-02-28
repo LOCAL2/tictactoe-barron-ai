@@ -186,8 +186,12 @@ export default function ThaiMakhos() {
     let blackPositionScore = 0;
     let whiteThreatened = 0;
     let blackThreatened = 0;
+    let whiteCanCapture = 0;
+    let blackCanCapture = 0;
+    let whiteVulnerable = 0; // NEW: pieces that would be vulnerable after moving
+    let blackVulnerable = 0;
     
-    // Check for threatened pieces
+    // Check for threatened pieces and capture opportunities
     const threatenedPieces = new Set<number>();
     for (let i = 0; i < 64; i++) {
       const piece = board[i];
@@ -195,6 +199,13 @@ export default function ThaiMakhos() {
       
       const [row, col] = getPosition(i);
       const isWhite = piece[0] === 'W';
+      
+      // Check capture opportunities
+      const captures = getCaptureMoves(board, i);
+      if (captures.length > 0) {
+        if (isWhite) whiteCanCapture += captures.length;
+        else blackCanCapture += captures.length;
+      }
       
       // Check if this piece can be captured
       const directions = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
@@ -218,6 +229,33 @@ export default function ThaiMakhos() {
           }
         }
       }
+      
+      // NEW: Check if moving this piece would create vulnerability
+      const moves = getValidMoves(board, i, false);
+      for (const moveIndex of moves) {
+        const [moveRow, moveCol] = getPosition(moveIndex);
+        // Check if the destination would be vulnerable
+        for (const [dr, dc] of directions) {
+          const attackerRow = moveRow - dr;
+          const attackerCol = moveCol - dc;
+          const attackerIndex = getIndex(attackerRow, attackerCol);
+          
+          if (attackerIndex !== -1 && attackerIndex !== i) {
+            const attacker = board[attackerIndex];
+            if (attacker && attacker[0] !== piece[0]) {
+              const landingRow = moveRow + dr;
+              const landingCol = moveCol + dc;
+              const landingIndex = getIndex(landingRow, landingCol);
+              
+              if (landingIndex !== -1 && isValidSquare(landingRow, landingCol) && !board[landingIndex]) {
+                if (isWhite) whiteVulnerable++;
+                else blackVulnerable++;
+                break;
+              }
+            }
+          }
+        }
+      }
     }
     
     for (let i = 0; i < 64; i++) {
@@ -236,39 +274,39 @@ export default function ThaiMakhos() {
         if (isKing) blackKings++;
       }
       
-      // Base value
-      let value = isKing ? 350 : 100;
+      // Base value - MUCH higher for kings
+      let value = isKing ? 500 : 100;
       
-      // Center control bonus (stronger)
+      // Center control bonus (stronger for AI)
       const centerDistance = Math.abs(3.5 - row) + Math.abs(3.5 - col);
-      value += (14 - centerDistance) * 8;
+      value += (14 - centerDistance) * (isWhite ? 12 : 8);
       
-      // Advancement bonus for pawns (stronger)
+      // Advancement bonus for pawns (MUCH stronger for AI)
       if (!isKing) {
-        if (isWhite && row >= 5) value += (row - 4) * 30;
-        if (!isWhite && row <= 2) value += (3 - row) * 30;
+        if (isWhite && row >= 4) value += (row - 3) * 50;
+        if (!isWhite && row <= 3) value += (4 - row) * 30;
       }
       
       // Edge penalty (stronger)
-      if (col === 0 || col === 7) value -= 20;
-      if (row === 0 || row === 7) value -= 10;
+      if (col === 0 || col === 7) value -= 25;
+      if (row === 0 || row === 7) value -= 15;
       
-      // Back row protection bonus
+      // Back row protection bonus (stronger for AI)
       if (!isKing) {
-        if (isWhite && row <= 1) value += 15;
+        if (isWhite && row <= 1) value += 25;
         if (!isWhite && row >= 6) value += 15;
       }
       
-      // Mobility bonus
+      // Mobility bonus (stronger for AI)
       const moves = getValidMoves(board, i, false);
-      value += moves.length * 8;
+      value += moves.length * (isWhite ? 12 : 8);
       
-      // Threatened piece penalty
+      // Threatened piece penalty (MUCH stronger)
       if (threatenedPieces.has(i)) {
-        value -= isKing ? 100 : 50;
+        value -= isKing ? 200 : 80;
       }
       
-      // Protected piece bonus
+      // Protected piece bonus (stronger for AI)
       let isProtected = false;
       for (const [dr, dc] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) {
         const protectorIndex = getIndex(row + dr, col + dc);
@@ -280,7 +318,13 @@ export default function ThaiMakhos() {
           }
         }
       }
-      if (isProtected) value += 10;
+      if (isProtected) value += (isWhite ? 20 : 10);
+      
+      // King positioning bonus
+      if (isKing && isWhite) {
+        // Kings should be aggressive and central
+        value += 50;
+      }
       
       if (isWhite) {
         whitePositionScore += value;
@@ -291,43 +335,55 @@ export default function ThaiMakhos() {
       score += isWhite ? value : -value;
     }
     
-    // Material advantage (stronger weight)
-    const materialDiff = (whitePieces - blackPieces) * 150;
-    const kingDiff = (whiteKings - blackKings) * 250;
+    // Material advantage (MUCH stronger weight)
+    const materialDiff = (whitePieces - blackPieces) * 250;
+    const kingDiff = (whiteKings - blackKings) * 400;
     
-    // Threat penalty
-    const threatDiff = (blackThreatened - whiteThreatened) * 30;
+    // Threat penalty (stronger)
+    const threatDiff = (blackThreatened - whiteThreatened) * 50;
     
-    score += materialDiff + kingDiff + threatDiff;
+    // Capture opportunity bonus (NEW - heavily favor having captures available)
+    const captureDiff = (whiteCanCapture - blackCanCapture) * 100;
     
-    // Endgame bonus: push for king promotion
-    if (whitePieces + blackPieces <= 6) {
+    // Vulnerability penalty (NEW - avoid creating capture opportunities for opponent)
+    const vulnerabilityDiff = (blackVulnerable - whiteVulnerable) * 40;
+    
+    score += materialDiff + kingDiff + threatDiff + captureDiff + vulnerabilityDiff;
+    
+    // Endgame bonus: push for king promotion (stronger for AI)
+    if (whitePieces + blackPieces <= 8) {
       for (let i = 0; i < 64; i++) {
         const piece = board[i];
         if (!piece || piece[1] === 'K') continue;
         
         const [row] = getPosition(i);
-        if (piece[0] === 'W' && row >= 5) {
-          score += (row - 4) * 20;
-        } else if (piece[0] === 'B' && row <= 2) {
-          score -= (3 - row) * 20;
+        if (piece[0] === 'W' && row >= 4) {
+          score += (row - 3) * 40;
+        } else if (piece[0] === 'B' && row <= 3) {
+          score -= (4 - row) * 20;
         }
       }
     }
     
+    // Winning/losing position detection
+    if (whitePieces === 0) score = -50000;
+    if (blackPieces === 0) score = 50000;
+    
     if (logDetails) {
       console.log('📊 Board Evaluation:', {
         totalScore: score,
-        white: { pieces: whitePieces, kings: whiteKings, positionScore: whitePositionScore, threatened: whiteThreatened },
-        black: { pieces: blackPieces, kings: blackKings, positionScore: blackPositionScore, threatened: blackThreatened },
+        white: { pieces: whitePieces, kings: whiteKings, positionScore: whitePositionScore, threatened: whiteThreatened, canCapture: whiteCanCapture, vulnerable: whiteVulnerable },
+        black: { pieces: blackPieces, kings: blackKings, positionScore: blackPositionScore, threatened: blackThreatened, canCapture: blackCanCapture, vulnerable: blackVulnerable },
         materialDiff,
         kingDiff,
-        threatDiff
+        threatDiff,
+        captureDiff,
+        vulnerabilityDiff
       });
     }
     
     return score;
-  }, [getValidMoves]);
+  }, [getValidMoves, getCaptureMoves]);
 
   const minimax = useCallback((board: Board, depth: number, alpha: number, beta: number, isMaximizing: boolean): number => {
     if (depth === 0) return evaluateBoard(board, false);
@@ -341,13 +397,32 @@ export default function ThaiMakhos() {
     const piecesWithCaptures = pieces.filter(({ index }) => getCaptureMoves(board, index).length > 0);
     const activePieces = piecesWithCaptures.length > 0 ? piecesWithCaptures : pieces;
     
+    // Move ordering for better pruning
+    const orderedPieces = activePieces.sort((a, b) => {
+      const aIsKing = a.piece![1] === 'K';
+      const bIsKing = b.piece![1] === 'K';
+      if (aIsKing !== bIsKing) return bIsKing ? 1 : -1;
+      return 0;
+    });
+    
     if (isMaximizing) {
       let maxEval = -Infinity;
       
-      for (const { index } of activePieces) {
+      for (const { index } of orderedPieces) {
         const moves = getValidMoves(board, index, piecesWithCaptures.length > 0);
         
-        for (const move of moves) {
+        // Order moves: captures first, then by advancement
+        const orderedMoves = moves.sort((a, b) => {
+          const [fromRow] = getPosition(index);
+          const [aRow] = getPosition(a);
+          const [bRow] = getPosition(b);
+          const aIsCapture = Math.abs(aRow - fromRow) === 2;
+          const bIsCapture = Math.abs(bRow - fromRow) === 2;
+          if (aIsCapture !== bIsCapture) return bIsCapture ? 1 : -1;
+          return bRow - aRow; // Prefer advancing
+        });
+        
+        for (const move of orderedMoves) {
           const newBoard = [...board];
           newBoard[move] = newBoard[index];
           newBoard[index] = null;
@@ -373,10 +448,21 @@ export default function ThaiMakhos() {
     } else {
       let minEval = Infinity;
       
-      for (const { index } of activePieces) {
+      for (const { index } of orderedPieces) {
         const moves = getValidMoves(board, index, piecesWithCaptures.length > 0);
         
-        for (const move of moves) {
+        // Order moves: captures first, then by advancement
+        const orderedMoves = moves.sort((a, b) => {
+          const [fromRow] = getPosition(index);
+          const [aRow] = getPosition(a);
+          const [bRow] = getPosition(b);
+          const aIsCapture = Math.abs(aRow - fromRow) === 2;
+          const bIsCapture = Math.abs(bRow - fromRow) === 2;
+          if (aIsCapture !== bIsCapture) return bIsCapture ? 1 : -1;
+          return aRow - bRow; // Prefer advancing
+        });
+        
+        for (const move of orderedMoves) {
           const newBoard = [...board];
           newBoard[move] = newBoard[index];
           newBoard[index] = null;
@@ -534,6 +620,8 @@ export default function ThaiMakhos() {
     
     let bestMove: { from: number; to: number } | null = null;
     let bestScore = -Infinity;
+    let wasCaptureBest = false;
+    let wasBestPromotion = false;
     const moveEvaluations: any[] = [];
     
     const aiPieces = aiPiecesWithCaptures.length > 0 
@@ -565,8 +653,19 @@ export default function ThaiMakhos() {
         
         if (newBoard[move] === 'WP' && toRow === 7) newBoard[move] = 'WK';
         
-        const score = minimax(newBoard, 7, -Infinity, Infinity, false);
-        const finalScore = isCapture ? score + 1000 : score;
+        // Dynamic depth based on game state
+        const totalPieces = newBoard.filter(p => p !== null).length;
+        let searchDepth = 8; // Base depth increased from 7 to 8
+        
+        // Increase depth in endgame
+        if (totalPieces <= 8) searchDepth = 10;
+        else if (totalPieces <= 12) searchDepth = 9;
+        
+        // Increase depth for capture sequences
+        if (isCapture) searchDepth += 1;
+        
+        const score = minimax(newBoard, searchDepth, -Infinity, Infinity, false);
+        const finalScore = isCapture ? score + 1500 : score; // Increased capture bonus from 1000 to 1500
         
         const moveInfo = {
           from: `[${fromRow},${fromCol}]`,
@@ -582,9 +681,17 @@ export default function ThaiMakhos() {
         
         console.log(`  → Move to [${toRow},${toCol}]: ${isCapture ? '🎯 CAPTURE' : '📦 Normal'} | Score: ${finalScore} ${moveInfo.promotion ? '👑 PROMOTION' : ''}`);
         
-        if (finalScore > bestScore) {
+        // Better move selection: prefer moves with higher scores, but also consider:
+        // 1. Captures are heavily favored
+        // 2. King promotions are favored
+        // 3. In case of tie, prefer more aggressive moves (advancement)
+        if (finalScore > bestScore || 
+            (finalScore === bestScore && isCapture && !wasCaptureBest) ||
+            (finalScore === bestScore && moveInfo.promotion && !wasBestPromotion)) {
           bestScore = finalScore;
           bestMove = { from: index, to: move };
+          wasCaptureBest = isCapture;
+          wasBestPromotion = moveInfo.promotion;
         }
       }
     }
